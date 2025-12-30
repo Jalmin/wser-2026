@@ -1,0 +1,294 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-body: 'Barlow', sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Magazine Typography */
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Pull Quote */
+.pull-quote {
+  position: relative;
+  padding-left: 1.5rem;
+  border-left: 3px solid #f97316;
+  font-style: italic;
+  font-size: 1.25rem;
+  line-height: 1.6;
+  color: #e4e4e7;
+}
+
+.pull-quote::before {
+  content: '"';
+  position: absolute;
+  left: -0.5rem;
+  top: -0.5rem;
+  font-size: 4rem;
+  font-family: var(--font-display);
+  color: #f97316;
+  opacity: 0.3;
+  line-height: 1;
+}
+
+/* Coach dialogue */
+.coach-bubble {
+  background: linear-gradient(135deg, #18181b 0%, #1f1f23 100%);
+  border: 1px solid #27272a;
+  border-radius: 1rem;
+  border-top-left-radius: 0.25rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.athlete-bubble {
+  background: linear-gradient(135deg, #1c1917 0%, #292524 100%);
+  border: 1px solid #44403c;
+  border-radius: 1rem;
+  border-top-right-radius: 0.25rem;
+  padding: 1.25rem 1.5rem;
+}
+
+/* Stat highlight */
+.stat-mega {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 4rem;
+  line-height: 1;
+  background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Section kicker */
+.kicker {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #f97316;
+}
+
+/* Magazine headline */
+.headline-xl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.headline-lg {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+/* Prose for long text */
+.prose-magazine {
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: #a1a1aa;
+}
+
+/* Base text size increase */
+.text-base-lg {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+/* Hero image overlay */
+.hero-image-overlay {
+  position: relative;
+}
+
+.hero-image-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0.7) 50%, rgba(10, 10, 10, 0.4) 100%);
+}
+
+.prose-magazine strong {
+  color: #e4e4e7;
+  font-weight: 600;
+}
+
+.prose-magazine em {
+  color: #d4d4d8;
+}
+
+/* Data card with enhanced hover */
+.data-card {
+  background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
+  border: 1px solid #27272a;
+  border-radius: 1rem;
+  transition: all 0.2s ease;
+}
+
+.data-card:hover {
+  border-color: #3f3f46;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+}
+
+/* Interactive card - more pronounced hover */
+.card-interactive {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-interactive:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 12px 32px -8px rgba(249, 115, 22, 0.15);
+  border-color: #f9731640;
+}
+
+/* Subtle glow on hover */
+.hover-glow:hover {
+  box-shadow: 0 0 20px -5px rgba(249, 115, 22, 0.3);
+}
+
+/* Smooth fade-in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* Stagger children animation */
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
+
+/* Pulse animation for important elements */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* Scale on tap for mobile */
+.tap-scale:active {
+  transform: scale(0.98);
+}
+
+/* CTA Button */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  color: white;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.02em;
+  border-radius: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -4px rgba(249, 115, 22, 0.4);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.5rem;
+  background: transparent;
+  color: #e4e4e7;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.02em;
+  border-radius: 0.75rem;
+  border: 1px solid #3f3f46;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: #27272a;
+  border-color: #52525b;
+}
+
+/* Stats colorées sémantiques */
+.stat-positive {
+  color: #34d399; /* emerald-400 */
+  font-weight: 600;
+}
+
+.stat-negative {
+  color: #f87171; /* red-400 */
+  font-weight: 600;
+}
+
+.stat-warning {
+  color: #fbbf24; /* yellow-400 */
+  font-weight: 600;
+}
+
+/* Stat mega variantes */
+.stat-mega-sm {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.5rem;
+  line-height: 1;
+  background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stat-mega-emerald {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 3rem;
+  line-height: 1;
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
