@@ -1,43 +1,94 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { ChevronLeft } from 'lucide-react'
 import { aoaStats, aoaAidStations, type AoaAidStation } from '../data/aoaData'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 
-// Elevation profile with aid station markers
+// Segment index (1-based: segment 2 = from station 1 to station 2)
+type SegmentIndex = number | null
+
+interface ElevationPoint {
+  distance: number
+  elevation: number
+  lon: number
+  lat: number
+}
+
+// Elevation profile with segment interaction
 function AoaElevationProfile({
   elevationData,
   aidStations,
+  hoveredSegment,
+  selectedSegment,
+  onSegmentHover,
+  onSegmentClick,
 }: {
-  elevationData: { distance: number; elevation: number }[]
+  elevationData: ElevationPoint[]
   aidStations: AoaAidStation[]
+  hoveredSegment: SegmentIndex
+  selectedSegment: SegmentIndex
+  onSegmentHover: (seg: SegmentIndex) => void
+  onSegmentClick: (seg: SegmentIndex) => void
 }) {
   if (elevationData.length === 0) return null
 
-  const maxEle = Math.max(...elevationData.map(d => d.elevation))
-  const minEle = Math.min(...elevationData.map(d => d.elevation))
+  const totalDistance = aoaStats.distance_km
+
+  // Get display range based on selection
+  const getDisplayRange = () => {
+    if (selectedSegment && selectedSegment >= 2) {
+      const fromStation = aidStations[selectedSegment - 2]
+      const toStation = aidStations[selectedSegment - 1]
+      return { minKm: fromStation.km, maxKm: toStation.km }
+    }
+    return { minKm: 0, maxKm: totalDistance }
+  }
+
+  const { minKm, maxKm } = getDisplayRange()
+  const displayData = selectedSegment
+    ? elevationData.filter(d => d.distance >= minKm && d.distance <= maxKm)
+    : elevationData
+
+  const maxEle = Math.max(...displayData.map(d => d.elevation))
+  const minEle = Math.min(...displayData.map(d => d.elevation))
   const padding = 10
   const effectiveMin = Math.max(0, minEle - padding)
   const effectiveMax = maxEle + padding
   const range = effectiveMax - effectiveMin
 
-  const totalDistance = aoaStats.distance_km
-
-  // Sample for smooth line
-  const sampled = elevationData.filter((_, i) => i % 5 === 0)
+  const sampled = displayData.filter((_, i) => i % 3 === 0)
 
   const getY = (ele: number) => 100 - ((ele - effectiveMin) / range) * 100
-  const getX = (dist: number) => (dist / totalDistance) * 100
+  const getX = (dist: number) => ((dist - minKm) / (maxKm - minKm)) * 100
 
   const pathPoints = sampled.map(d => `${getX(d.distance)},${getY(d.elevation)}`).join(' ')
+
+  // Get segment bounds for interaction
+  const getSegmentBounds = (segNum: number) => {
+    if (segNum < 2) return null
+    const fromStation = aidStations[segNum - 2]
+    const toStation = aidStations[segNum - 1]
+    return {
+      x1: getX(fromStation.km),
+      x2: getX(toStation.km),
+    }
+  }
 
   return (
     <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-zinc-300">Profil altimétrique</span>
+        <span className="text-sm font-semibold text-zinc-300">
+          Profil altimétrique
+          {selectedSegment && (
+            <span className="ml-2 text-orange-400">
+              → {aidStations[selectedSegment - 1]?.name.replace('Start - ', '').replace('Finish - ', '')}
+            </span>
+          )}
+        </span>
         <div className="flex items-center gap-4 text-xs text-zinc-500">
-          <span>{aoaStats.distance_km} km</span>
+          <span>{selectedSegment ? `${(maxKm - minKm).toFixed(1)} km` : `${aoaStats.distance_km} km`}</span>
           <span className="text-emerald-400">+{aoaStats.ascent_m}m</span>
           <span className="text-red-400">-{aoaStats.descent_m}m</span>
         </div>
@@ -59,19 +110,57 @@ function AoaElevationProfile({
             <line x1="0" y1="50" x2="100" y2="50" stroke="#27272a" strokeWidth="0.2" />
             <line x1="0" y1="75" x2="100" y2="75" stroke="#27272a" strokeWidth="0.2" />
 
+            {/* Segment interactive zones - only when not zoomed */}
+            {!selectedSegment && aidStations.slice(1).map((station) => {
+              const bounds = getSegmentBounds(station.num)
+              if (!bounds) return null
+              const isHovered = hoveredSegment === station.num
+              const isSelected = selectedSegment === station.num
+
+              return (
+                <g key={`seg-${station.num}`}>
+                  {/* Highlight background for hovered/selected segment */}
+                  {(isHovered || isSelected) && (
+                    <rect
+                      x={bounds.x1}
+                      y="0"
+                      width={bounds.x2 - bounds.x1}
+                      height="100"
+                      fill={isSelected ? 'rgba(249, 115, 22, 0.15)' : 'rgba(255, 255, 255, 0.05)'}
+                    />
+                  )}
+                  {/* Invisible clickable zone */}
+                  <rect
+                    x={bounds.x1}
+                    y="0"
+                    width={bounds.x2 - bounds.x1}
+                    height="100"
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseEnter={() => onSegmentHover(station.num)}
+                    onMouseLeave={() => onSegmentHover(null)}
+                    onClick={() => onSegmentClick(station.num)}
+                  />
+                </g>
+              )
+            })}
+
             {/* Aid station vertical lines */}
-            {aidStations.slice(1).map((station) => (
-              <line
-                key={station.num}
-                x1={getX(station.km)}
-                y1="0"
-                x2={getX(station.km)}
-                y2="100"
-                stroke="#3f3f46"
-                strokeWidth="0.3"
-                strokeDasharray="2,2"
-              />
-            ))}
+            {!selectedSegment && aidStations.slice(1).map((station) => {
+              const isHighlighted = hoveredSegment === station.num || hoveredSegment === station.num + 1
+              return (
+                <line
+                  key={station.num}
+                  x1={getX(station.km)}
+                  y1="0"
+                  x2={getX(station.km)}
+                  y2="100"
+                  stroke={isHighlighted ? '#fff' : '#3f3f46'}
+                  strokeWidth={isHighlighted ? '0.5' : '0.3'}
+                  strokeDasharray="2,2"
+                />
+              )
+            })}
 
             {/* Elevation fill */}
             <defs>
@@ -89,73 +178,101 @@ function AoaElevationProfile({
             <polyline
               points={pathPoints}
               fill="none"
-              stroke="#f97316"
+              stroke={hoveredSegment || selectedSegment ? '#fff' : '#f97316'}
               strokeWidth="0.3"
             />
 
             {/* Aid station dots */}
-            {aidStations.map((station) => (
-              <circle
-                key={station.num}
-                cx={getX(station.km)}
-                cy={getY(station.ele)}
-                r="0.8"
-                fill="#fff"
-                stroke="#f97316"
-                strokeWidth="0.3"
-              />
-            ))}
+            {(selectedSegment
+              ? aidStations.filter(s => s.km >= minKm && s.km <= maxKm)
+              : aidStations
+            ).map((station) => {
+              const isHighlighted = hoveredSegment === station.num || hoveredSegment === station.num + 1
+              return (
+                <circle
+                  key={station.num}
+                  cx={getX(station.km)}
+                  cy={getY(station.ele)}
+                  r={isHighlighted ? '1.2' : '0.8'}
+                  fill={isHighlighted ? '#fff' : '#fff'}
+                  stroke={isHighlighted ? '#fff' : '#f97316'}
+                  strokeWidth="0.3"
+                />
+              )
+            })}
           </svg>
 
-          {/* X-axis labels (aid stations) */}
-          <div className="absolute bottom-0 left-0 right-0 translate-y-full pt-1 flex justify-between">
-            {aidStations.filter((_, i) => i % 2 === 0 || i === aidStations.length - 1).map((station) => (
+          {/* X-axis labels */}
+          <div className="absolute bottom-0 left-0 right-0 translate-y-full pt-1">
+            {(selectedSegment
+              ? aidStations.filter(s => s.km >= minKm && s.km <= maxKm)
+              : aidStations.filter((_, i) => i % 2 === 0 || i === aidStations.length - 1)
+            ).map((station) => (
               <span
                 key={station.num}
-                className="text-[9px] text-zinc-500"
-                style={{ position: 'absolute', left: `${getX(station.km)}%`, transform: 'translateX(-50%)' }}
+                className="text-[9px] text-zinc-500 absolute"
+                style={{ left: `${getX(station.km)}%`, transform: 'translateX(-50%)' }}
               >
-                {station.km}
+                {station.km.toFixed(1)}
               </span>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Segment labels below */}
-      <div className="mt-6 ml-10 flex">
-        {aidStations.slice(1).map((station, i) => {
-          const prevKm = aidStations[i].km
-          const width = ((station.km - prevKm) / totalDistance) * 100
-          return (
-            <div
-              key={station.num}
-              className="text-center border-r border-zinc-800 last:border-r-0"
-              style={{ width: `${width}%` }}
-            >
-              <div className="text-[8px] text-zinc-600 truncate px-0.5">
-                {station.name.replace('Start - ', '').replace('Finish - ', '').split(' ')[0]}
+      {/* Segment labels below - only when not zoomed */}
+      {!selectedSegment && (
+        <div className="mt-6 ml-10 flex">
+          {aidStations.slice(1).map((station, i) => {
+            const prevKm = aidStations[i].km
+            const width = ((station.km - prevKm) / totalDistance) * 100
+            const isHovered = hoveredSegment === station.num
+            return (
+              <div
+                key={station.num}
+                className={`text-center border-r border-zinc-800 last:border-r-0 cursor-pointer transition-colors ${
+                  isHovered ? 'bg-white/5' : ''
+                }`}
+                style={{ width: `${width}%` }}
+                onMouseEnter={() => onSegmentHover(station.num)}
+                onMouseLeave={() => onSegmentHover(null)}
+                onClick={() => onSegmentClick(station.num)}
+              >
+                <div className={`text-[8px] truncate px-0.5 ${isHovered ? 'text-white' : 'text-zinc-600'}`}>
+                  {station.name.replace('Start - ', '').replace('Finish - ', '').split(' ')[0]}
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-// Map component
+// Map component with segment interaction
 function AoaMap({
   gpxData,
-  onStationSelect,
+  elevationData,
+  hoveredSegment,
+  selectedSegment,
+  onSegmentHover,
+  onSegmentClick,
+  onBack,
 }: {
   gpxData: GeoJSON.FeatureCollection | null
-  onStationSelect: (station: AoaAidStation | null) => void
+  elevationData: ElevationPoint[]
+  hoveredSegment: SegmentIndex
+  selectedSegment: SegmentIndex
+  onSegmentHover: (seg: SegmentIndex) => void
+  onSegmentClick: (seg: SegmentIndex) => void
+  onBack: () => void
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const markersRef = useRef<mapboxgl.Marker[]>([])
   const [mapLoaded, setMapLoaded] = useState(false)
+  const initialBounds = useRef<mapboxgl.LngLatBounds | null>(null)
 
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN) return
@@ -164,7 +281,7 @@ function AoaMap({
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/outdoors-v12', // Outdoor style - more readable terrain
+      style: 'mapbox://styles/mapbox/satellite-streets-v12',
       center: [-5.4, 50.1],
       zoom: 9,
       pitch: 30,
@@ -185,13 +302,29 @@ function AoaMap({
     }
   }, [])
 
-  // Add GPX track
+  // Add GPX track with segments
   useEffect(() => {
     if (!map.current || !mapLoaded || !gpxData) return
 
+    // Remove old layers
+    aoaAidStations.forEach((_, i) => {
+      const layerId = `segment-${i + 2}`
+      if (map.current?.getLayer(layerId)) map.current.removeLayer(layerId)
+      if (map.current?.getSource(layerId)) map.current.removeSource(layerId)
+    })
     if (map.current.getLayer('route-line')) map.current.removeLayer('route-line')
     if (map.current.getSource('route')) map.current.removeSource('route')
 
+    const coords = (gpxData.features[0]?.geometry as GeoJSON.LineString)?.coordinates || []
+
+    // Store initial bounds
+    if (coords.length > 0 && !initialBounds.current) {
+      const bounds = new mapboxgl.LngLatBounds()
+      coords.forEach(c => bounds.extend([c[0], c[1]]))
+      initialBounds.current = bounds
+    }
+
+    // Add full route
     map.current.addSource('route', {
       type: 'geojson',
       data: gpxData.features[0],
@@ -201,17 +334,84 @@ function AoaMap({
       id: 'route-line',
       type: 'line',
       source: 'route',
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
         'line-color': '#f97316',
         'line-width': 3,
         'line-opacity': 0.9,
       },
     })
-  }, [gpxData, mapLoaded])
+
+    // Create segment sources for highlighting
+    aoaAidStations.slice(1).forEach((station, i) => {
+      const fromStation = aoaAidStations[i]
+      const toStation = station
+
+      // Find coordinates for this segment
+      const segCoords = elevationData
+        .filter(p => p.distance >= fromStation.km && p.distance <= toStation.km)
+        .map(p => [p.lon, p.lat])
+
+      if (segCoords.length > 0) {
+        const layerId = `segment-${station.num}`
+        map.current?.addSource(layerId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: segCoords },
+          },
+        })
+
+        map.current?.addLayer({
+          id: layerId,
+          type: 'line',
+          source: layerId,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#fff',
+            'line-width': 5,
+            'line-opacity': 0,
+          },
+        })
+      }
+    })
+  }, [gpxData, mapLoaded, elevationData])
+
+  // Update segment highlighting
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+
+    aoaAidStations.slice(1).forEach((station) => {
+      const layerId = `segment-${station.num}`
+      if (map.current?.getLayer(layerId)) {
+        const isHighlighted = hoveredSegment === station.num || selectedSegment === station.num
+        map.current.setPaintProperty(layerId, 'line-opacity', isHighlighted ? 1 : 0)
+      }
+    })
+  }, [hoveredSegment, selectedSegment, mapLoaded])
+
+  // Zoom to segment on selection
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+
+    if (selectedSegment && selectedSegment >= 2) {
+      const fromStation = aoaAidStations[selectedSegment - 2]
+      const toStation = aoaAidStations[selectedSegment - 1]
+
+      const segCoords = elevationData
+        .filter(p => p.distance >= fromStation.km && p.distance <= toStation.km)
+        .map(p => [p.lon, p.lat] as [number, number])
+
+      if (segCoords.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds()
+        segCoords.forEach(c => bounds.extend(c))
+        map.current.fitBounds(bounds, { padding: 80, duration: 500 })
+      }
+    } else if (initialBounds.current) {
+      map.current.fitBounds(initialBounds.current, { padding: 40, duration: 500 })
+    }
+  }, [selectedSegment, mapLoaded, elevationData])
 
   // Add markers
   useEffect(() => {
@@ -223,24 +423,32 @@ function AoaMap({
     aoaAidStations.forEach((station) => {
       const el = document.createElement('div')
       el.className = 'aid-marker'
+      const isHighlighted = hoveredSegment === station.num || hoveredSegment === station.num + 1
       el.style.cssText = `
-        width: 20px;
-        height: 20px;
-        background: ${station.num === 1 ? '#22c55e' : station.num === 11 ? '#ef4444' : '#f97316'};
-        border: 2px solid white;
+        width: ${isHighlighted ? '24px' : '20px'};
+        height: ${isHighlighted ? '24px' : '20px'};
+        background: ${station.num === 1 ? '#22c55e' : station.num === 11 ? '#ef4444' : isHighlighted ? '#fff' : '#f97316'};
+        border: 2px solid ${isHighlighted ? '#f97316' : 'white'};
         border-radius: 50%;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 9px;
+        font-size: ${isHighlighted ? '10px' : '9px'};
         font-weight: bold;
-        color: white;
+        color: ${isHighlighted ? '#f97316' : 'white'};
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        transition: all 0.15s;
       `
       el.textContent = station.num.toString()
 
-      el.addEventListener('click', () => onStationSelect(station))
+      el.addEventListener('mouseenter', () => {
+        if (station.num > 1) onSegmentHover(station.num)
+      })
+      el.addEventListener('mouseleave', () => onSegmentHover(null))
+      el.addEventListener('click', () => {
+        if (station.num > 1) onSegmentClick(station.num)
+      })
 
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat([station.lon, station.lat])
@@ -248,7 +456,7 @@ function AoaMap({
 
       markersRef.current.push(marker)
     })
-  }, [mapLoaded, onStationSelect])
+  }, [mapLoaded, hoveredSegment, onSegmentHover, onSegmentClick])
 
   if (!MAPBOX_TOKEN || !MAPBOX_TOKEN.startsWith('pk.')) {
     return (
@@ -263,13 +471,41 @@ function AoaMap({
     )
   }
 
-  return <div ref={mapContainer} className="h-full rounded-xl overflow-hidden" />
+  return (
+    <div className="relative h-full">
+      <div ref={mapContainer} className="h-full rounded-xl overflow-hidden" />
+
+      {/* Back button */}
+      {selectedSegment && (
+        <button
+          onClick={onBack}
+          className="absolute top-4 left-4 flex items-center gap-2 px-3 py-2 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Vue globale
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function AoaPage() {
   const [gpxData, setGpxData] = useState<GeoJSON.FeatureCollection | null>(null)
-  const [elevationData, setElevationData] = useState<{ distance: number; elevation: number }[]>([])
-  const [selectedStation, setSelectedStation] = useState<AoaAidStation | null>(null)
+  const [elevationData, setElevationData] = useState<ElevationPoint[]>([])
+  const [hoveredSegment, setHoveredSegment] = useState<SegmentIndex>(null)
+  const [selectedSegment, setSelectedSegment] = useState<SegmentIndex>(null)
+
+  const handleSegmentHover = useCallback((seg: SegmentIndex) => {
+    setHoveredSegment(seg)
+  }, [])
+
+  const handleSegmentClick = useCallback((seg: SegmentIndex) => {
+    setSelectedSegment(seg)
+  }, [])
+
+  const handleBack = useCallback(() => {
+    setSelectedSegment(null)
+  }, [])
 
   // Load GPX
   useEffect(() => {
@@ -282,7 +518,7 @@ export function AoaPage() {
 
         const trackPoints = gpx.querySelectorAll('trkpt')
         const coordinates: [number, number, number][] = []
-        const eleData: { distance: number; elevation: number }[] = []
+        const eleData: ElevationPoint[] = []
 
         let cumulativeDistance = 0
 
@@ -306,7 +542,7 @@ export function AoaPage() {
           }
 
           coordinates.push([lon, lat, ele])
-          eleData.push({ distance: cumulativeDistance, elevation: ele })
+          eleData.push({ distance: cumulativeDistance, elevation: ele, lon, lat })
         })
 
         const track: GeoJSON.FeatureCollection = {
@@ -358,11 +594,26 @@ export function AoaPage() {
 
       {/* Map */}
       <div className="h-[400px] rounded-xl overflow-hidden border border-zinc-800">
-        <AoaMap gpxData={gpxData} onStationSelect={setSelectedStation} />
+        <AoaMap
+          gpxData={gpxData}
+          elevationData={elevationData}
+          hoveredSegment={hoveredSegment}
+          selectedSegment={selectedSegment}
+          onSegmentHover={handleSegmentHover}
+          onSegmentClick={handleSegmentClick}
+          onBack={handleBack}
+        />
       </div>
 
       {/* Elevation Profile */}
-      <AoaElevationProfile elevationData={elevationData} aidStations={aoaAidStations} />
+      <AoaElevationProfile
+        elevationData={elevationData}
+        aidStations={aoaAidStations}
+        hoveredSegment={hoveredSegment}
+        selectedSegment={selectedSegment}
+        onSegmentHover={handleSegmentHover}
+        onSegmentClick={handleSegmentClick}
+      />
 
       {/* Aid Stations Table */}
       <div className="rounded-xl border border-zinc-800 overflow-hidden">
@@ -373,43 +624,38 @@ export function AoaPage() {
               <th className="text-left py-3 px-4 font-semibold text-zinc-400">Ravito</th>
               <th className="text-right py-3 px-4 font-semibold text-zinc-400">Km</th>
               <th className="text-right py-3 px-4 font-semibold text-zinc-400">Alt</th>
-              <th className="text-right py-3 px-4 font-semibold text-zinc-400">Cutoff</th>
               <th className="text-right py-3 px-4 font-semibold text-zinc-400 border-l border-zinc-800">Segment</th>
               <th className="text-right py-3 px-4 font-semibold text-zinc-400">D+</th>
               <th className="text-right py-3 px-4 font-semibold text-zinc-400">D-</th>
-              <th className="text-right py-3 px-4 font-semibold text-zinc-400">D+/km</th>
+              <th className="text-right py-3 px-4 font-semibold text-blue-400">Mont.</th>
+              <th className="text-right py-3 px-4 font-semibold text-zinc-400">Plat</th>
+              <th className="text-right py-3 px-4 font-semibold text-orange-400">Desc.</th>
             </tr>
           </thead>
           <tbody>
             {aoaAidStations.map((station) => {
-              const isSelected = selectedStation?.num === station.num
-              const dplusPerKm = station.segmentKm ? Math.round((station.segmentDplus || 0) / station.segmentKm) : null
-              const isHardSegment = dplusPerKm && dplusPerKm > 35
+              const isHovered = hoveredSegment === station.num
+              const isSelected = selectedSegment === station.num
 
               return (
                 <tr
                   key={station.num}
-                  className={`border-t border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors ${
-                    isSelected ? 'bg-orange-500/10' : ''
+                  className={`border-t border-zinc-800/50 cursor-pointer transition-colors ${
+                    isSelected ? 'bg-orange-500/15' : isHovered ? 'bg-white/5' : 'hover:bg-zinc-800/30'
                   } ${station.num === 6 ? 'bg-orange-500/5' : ''}`}
-                  onClick={() => setSelectedStation(station)}
+                  onMouseEnter={() => station.num > 1 && handleSegmentHover(station.num)}
+                  onMouseLeave={() => handleSegmentHover(null)}
+                  onClick={() => station.num > 1 && handleSegmentClick(station.num)}
                 >
                   <td className="py-3 px-4 font-mono text-zinc-500">{station.num}</td>
                   <td className="py-3 px-4">
-                    <span className={station.num === 6 ? 'font-semibold text-orange-400' : 'text-zinc-200'}>
+                    <span className={station.num === 6 ? 'font-semibold text-orange-400' : isHovered ? 'text-white' : 'text-zinc-200'}>
                       {station.name.replace('Start - ', '').replace('Finish - ', '')}
                     </span>
                     {station.num === 6 && <span className="ml-2 text-[10px] text-orange-500">MI-COURSE</span>}
                   </td>
                   <td className="py-3 px-4 text-right font-mono text-zinc-300">{station.km.toFixed(1)}</td>
                   <td className="py-3 px-4 text-right font-mono text-zinc-500">{station.ele}m</td>
-                  <td className="py-3 px-4 text-right">
-                    {station.cutoff ? (
-                      <span className="font-mono text-red-400">{station.cutoff}</span>
-                    ) : (
-                      <span className="text-zinc-700">—</span>
-                    )}
-                  </td>
                   <td className="py-3 px-4 text-right font-mono text-zinc-400 border-l border-zinc-800">
                     {station.segmentKm ? `${station.segmentKm.toFixed(1)} km` : '—'}
                   </td>
@@ -419,8 +665,14 @@ export function AoaPage() {
                   <td className="py-3 px-4 text-right font-mono text-red-400">
                     {station.segmentDminus ? `-${station.segmentDminus}` : '—'}
                   </td>
-                  <td className={`py-3 px-4 text-right font-mono ${isHardSegment ? 'text-orange-400 font-semibold' : 'text-zinc-500'}`}>
-                    {dplusPerKm ? `${dplusPerKm}m` : '—'}
+                  <td className="py-3 px-4 text-right font-mono text-blue-400">
+                    {station.segmentUpKm ? `${station.segmentUpKm}` : '—'}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-zinc-400">
+                    {station.segmentFlatKm ? `${station.segmentFlatKm}` : '—'}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-orange-400">
+                    {station.segmentDownKm ? `${station.segmentDownKm}` : '—'}
                   </td>
                 </tr>
               )
@@ -433,16 +685,12 @@ export function AoaPage() {
               </td>
               <td className="py-3 px-4 text-right font-mono font-semibold text-white">{aoaStats.distance_km}</td>
               <td className="py-3 px-4 text-right font-mono text-zinc-500">—</td>
-              <td className="py-3 px-4 text-right font-mono text-red-400 font-semibold">40h00</td>
-              <td className="py-3 px-4 border-l border-zinc-800" colSpan={2}>
-                <div className="text-right font-mono">
-                  <span className="text-emerald-400 font-semibold">+{aoaStats.ascent_m}m</span>
-                </div>
-              </td>
+              <td className="py-3 px-4 border-l border-zinc-800"></td>
+              <td className="py-3 px-4 text-right font-mono text-emerald-400 font-semibold">+{aoaStats.ascent_m}m</td>
               <td className="py-3 px-4 text-right font-mono text-red-400 font-semibold">-{aoaStats.descent_m}m</td>
-              <td className="py-3 px-4 text-right font-mono text-zinc-400">
-                {Math.round(aoaStats.ascent_m / aoaStats.distance_km)}m
-              </td>
+              <td className="py-3 px-4 text-right font-mono text-blue-400 font-semibold">{aoaStats.uphill_km}</td>
+              <td className="py-3 px-4 text-right font-mono text-zinc-400 font-semibold">{aoaStats.flat_km}</td>
+              <td className="py-3 px-4 text-right font-mono text-orange-400 font-semibold">{aoaStats.downhill_km}</td>
             </tr>
           </tfoot>
         </table>
@@ -478,7 +726,7 @@ export function AoaPage() {
 
       {/* Footer */}
       <div className="text-center text-xs text-zinc-600 pt-4 border-t border-zinc-800">
-        Page cachée · Données GPX analysées
+        Page cachée · Données GPX analysées · Cliquer sur un segment pour zoomer
       </div>
     </div>
   )
