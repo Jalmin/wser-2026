@@ -27,12 +27,14 @@ function AoaElevationProfile({
   cursorPoint,
   onCursorMove,
   onCursorLeave,
+  onSegmentClick,
 }: {
   elevationData: ElevationPoint[]
   aidStations: AoaAidStation[]
   cursorPoint: CursorPoint | null
   onCursorMove: (point: CursorPoint) => void
   onCursorLeave: () => void
+  onSegmentClick: (startKm: number, endKm: number) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const totalDistance = aoaStats.distance_km
@@ -246,23 +248,28 @@ function AoaElevationProfile({
         </div>
       </div>
 
-      {/* Segment labels below */}
-      <div className="mt-6 ml-10 flex pointer-events-none">
+      {/* Clickable segment zones for zooming */}
+      <div className="mt-4 ml-10 flex">
         {aidStations.slice(1).map((station, i) => {
           const prevKm = aidStations[i].km
           const width = ((station.km - prevKm) / totalDistance) * 100
           return (
-            <div
+            <button
               key={station.num}
-              className="text-center border-r border-zinc-800 last:border-r-0"
+              className="text-center border-r border-zinc-800 last:border-r-0 py-2 hover:bg-zinc-800/50 transition-colors cursor-pointer group"
               style={{ width: `${width}%` }}
+              onClick={() => onSegmentClick(prevKm, station.km)}
+              title={`Zoom sur ${aidStations[i].name.split(' ').pop()} → ${station.name.split(' ').pop()}`}
             >
-              <div className="text-[8px] text-zinc-600 truncate px-0.5">
+              <div className="text-[8px] text-zinc-600 group-hover:text-orange-400 truncate px-0.5 transition-colors">
                 {station.name.replace('Start - ', '').replace('Finish - ', '').split(' ')[0]}
               </div>
-            </div>
+            </button>
           )
         })}
+      </div>
+      <div className="ml-10 mt-1 text-[9px] text-zinc-600 text-center">
+        Cliquez sur un segment pour zoomer
       </div>
     </div>
   )
@@ -275,12 +282,14 @@ function AoaMap({
   cursorPoint,
   onCursorMove,
   onCursorLeave,
+  zoomToSegment,
 }: {
   gpxData: GeoJSON.FeatureCollection | null
   elevationData: ElevationPoint[]
   cursorPoint: CursorPoint | null
   onCursorMove: (point: CursorPoint) => void
   onCursorLeave: () => void
+  zoomToSegment: { startKm: number; endKm: number } | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -427,6 +436,31 @@ function AoaMap({
     }
   }, [cursorPoint, mapLoaded])
 
+  // Zoom to segment when requested
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !zoomToSegment || elevationData.length === 0) return
+
+    // Find points in this segment
+    const segmentPoints = elevationData.filter(
+      p => p.distance >= zoomToSegment.startKm && p.distance <= zoomToSegment.endKm
+    )
+
+    if (segmentPoints.length === 0) return
+
+    // Calculate bounds
+    const lngs = segmentPoints.map(p => p.lon)
+    const lats = segmentPoints.map(p => p.lat)
+    const bounds = new mapboxgl.LngLatBounds(
+      [Math.min(...lngs), Math.min(...lats)],
+      [Math.max(...lngs), Math.max(...lats)]
+    )
+
+    map.current.fitBounds(bounds, {
+      padding: 60,
+      duration: 1000,
+    })
+  }, [zoomToSegment, mapLoaded, elevationData])
+
   // Add aid station markers
   useEffect(() => {
     if (!map.current || !mapLoaded) return
@@ -480,6 +514,7 @@ export function AoaPage() {
   const [gpxData, setGpxData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [elevationData, setElevationData] = useState<ElevationPoint[]>([])
   const [cursorPoint, setCursorPoint] = useState<CursorPoint | null>(null)
+  const [zoomToSegment, setZoomToSegment] = useState<{ startKm: number; endKm: number } | null>(null)
 
   const handleCursorMove = useCallback((point: CursorPoint) => {
     setCursorPoint(point)
@@ -487,6 +522,10 @@ export function AoaPage() {
 
   const handleCursorLeave = useCallback(() => {
     setCursorPoint(null)
+  }, [])
+
+  const handleSegmentClick = useCallback((startKm: number, endKm: number) => {
+    setZoomToSegment({ startKm, endKm })
   }, [])
 
   // Load GPX
@@ -582,6 +621,7 @@ export function AoaPage() {
           cursorPoint={cursorPoint}
           onCursorMove={handleCursorMove}
           onCursorLeave={handleCursorLeave}
+          zoomToSegment={zoomToSegment}
         />
       </div>
 
@@ -592,6 +632,7 @@ export function AoaPage() {
         cursorPoint={cursorPoint}
         onCursorMove={handleCursorMove}
         onCursorLeave={handleCursorLeave}
+        onSegmentClick={handleSegmentClick}
       />
 
       {/* Aid Stations Table */}
