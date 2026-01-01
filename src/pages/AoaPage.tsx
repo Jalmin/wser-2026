@@ -36,7 +36,7 @@ function AoaElevationProfile({
   onCursorMove: (point: CursorPoint) => void
   onCursorLeave: () => void
   onSegmentClick: (startKm: number, endKm: number) => void
-  activeSegment: { startKm: number; endKm: number } | null
+  activeSegment: { startKm: number; endKm: number; id: number } | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const totalDistance = aoaStats.distance_km
@@ -309,7 +309,7 @@ function AoaMap({
   cursorPoint: CursorPoint | null
   onCursorMove: (point: CursorPoint) => void
   onCursorLeave: () => void
-  zoomToSegment: { startKm: number; endKm: number } | null
+  zoomToSegment: { startKm: number; endKm: number; id: number } | null
   onMapClick: (km: number) => void
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -546,7 +546,8 @@ export function AoaPage() {
   const [gpxData, setGpxData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [elevationData, setElevationData] = useState<ElevationPoint[]>([])
   const [cursorPoint, setCursorPoint] = useState<CursorPoint | null>(null)
-  const [zoomToSegment, setZoomToSegment] = useState<{ startKm: number; endKm: number } | null>(null)
+  const [zoomToSegment, setZoomToSegment] = useState<{ startKm: number; endKm: number; id: number } | null>(null)
+  const zoomIdRef = useRef(0)
 
   const handleCursorMove = useCallback((point: CursorPoint) => {
     setCursorPoint(point)
@@ -557,7 +558,8 @@ export function AoaPage() {
   }, [])
 
   const handleSegmentClick = useCallback((startKm: number, endKm: number) => {
-    setZoomToSegment({ startKm, endKm })
+    zoomIdRef.current++
+    setZoomToSegment({ startKm, endKm, id: zoomIdRef.current })
   }, [])
 
   // Find which segment a km belongs to
@@ -567,7 +569,8 @@ export function AoaPage() {
       const prevKm = aoaAidStations[i - 1].km
       const currKm = aoaAidStations[i].km
       if (km >= prevKm && km <= currKm) {
-        setZoomToSegment({ startKm: prevKm, endKm: currKm })
+        zoomIdRef.current++
+        setZoomToSegment({ startKm: prevKm, endKm: currKm, id: zoomIdRef.current })
         return
       }
     }
