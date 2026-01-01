@@ -189,8 +189,6 @@ function AoaMap({
   useEffect(() => {
     if (!map.current || !mapLoaded || !gpxData) return
 
-    const coordinates = (gpxData.features[0]?.geometry as GeoJSON.LineString)?.coordinates || []
-
     if (map.current.getLayer('route-line')) map.current.removeLayer('route-line')
     if (map.current.getSource('route')) map.current.removeSource('route')
 
@@ -383,7 +381,7 @@ export function AoaPage() {
             </tr>
           </thead>
           <tbody>
-            {aoaAidStations.map((station, i) => {
+            {aoaAidStations.map((station) => {
               const isSelected = selectedStation?.num === station.num
               const dplusPerKm = station.segmentKm ? Math.round((station.segmentDplus || 0) / station.segmentKm) : null
               const isHardSegment = dplusPerKm && dplusPerKm > 35
