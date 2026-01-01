@@ -35,26 +35,9 @@ function AoaElevationProfile({
   onCursorLeave: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-
-  if (elevationData.length === 0) return null
-
   const totalDistance = aoaStats.distance_km
 
-  const maxEle = Math.max(...elevationData.map(d => d.elevation))
-  const minEle = Math.min(...elevationData.map(d => d.elevation))
-  const padding = 10
-  const effectiveMin = Math.max(0, minEle - padding)
-  const effectiveMax = maxEle + padding
-  const range = effectiveMax - effectiveMin
-
-  const sampled = elevationData.filter((_, i) => i % 3 === 0)
-
-  const getY = (ele: number) => 100 - ((ele - effectiveMin) / range) * 100
-  const getX = (dist: number) => (dist / totalDistance) * 100
-
-  const pathPoints = sampled.map(d => `${getX(d.distance)},${getY(d.elevation)}`).join(' ')
-
-  // Find closest point on mouse move
+  // Find closest point on mouse move - hook must be before any conditional returns
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current || elevationData.length === 0) return
 
@@ -95,6 +78,23 @@ function AoaElevationProfile({
       gradient,
     })
   }, [elevationData, totalDistance, onCursorMove])
+
+  // Early return AFTER hooks
+  if (elevationData.length === 0) return null
+
+  const maxEle = Math.max(...elevationData.map(d => d.elevation))
+  const minEle = Math.min(...elevationData.map(d => d.elevation))
+  const padding = 10
+  const effectiveMin = Math.max(0, minEle - padding)
+  const effectiveMax = maxEle + padding
+  const range = effectiveMax - effectiveMin
+
+  const sampled = elevationData.filter((_, i) => i % 3 === 0)
+
+  const getY = (ele: number) => 100 - ((ele - effectiveMin) / range) * 100
+  const getX = (dist: number) => (dist / totalDistance) * 100
+
+  const pathPoints = sampled.map(d => `${getX(d.distance)},${getY(d.elevation)}`).join(' ')
 
   // Get terrain type from gradient
   const getTerrainType = (gradient: number) => {
