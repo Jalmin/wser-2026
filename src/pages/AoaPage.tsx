@@ -28,6 +28,7 @@ function AoaElevationProfile({
   onCursorMove,
   onCursorLeave,
   onSegmentClick,
+  activeSegment,
 }: {
   elevationData: ElevationPoint[]
   aidStations: AoaAidStation[]
@@ -35,6 +36,7 @@ function AoaElevationProfile({
   onCursorMove: (point: CursorPoint) => void
   onCursorLeave: () => void
   onSegmentClick: (startKm: number, endKm: number) => void
+  activeSegment: { startKm: number; endKm: number } | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const totalDistance = aoaStats.distance_km
@@ -176,6 +178,18 @@ function AoaElevationProfile({
               />
             ))}
 
+            {/* Active segment highlight */}
+            {activeSegment && (
+              <rect
+                x={getX(activeSegment.startKm)}
+                y="0"
+                width={getX(activeSegment.endKm) - getX(activeSegment.startKm)}
+                height="100"
+                fill="#f97316"
+                fillOpacity="0.15"
+              />
+            )}
+
             {/* Elevation fill */}
             <defs>
               <linearGradient id="aoa-gradient" x1="0" y1="0" x2="0" y2="1">
@@ -253,15 +267,20 @@ function AoaElevationProfile({
         {aidStations.slice(1).map((station, i) => {
           const prevKm = aidStations[i].km
           const width = ((station.km - prevKm) / totalDistance) * 100
+          const isActive = activeSegment && activeSegment.startKm === prevKm && activeSegment.endKm === station.km
           return (
             <button
               key={station.num}
-              className="text-center border-r border-zinc-800 last:border-r-0 py-2 hover:bg-zinc-800/50 transition-colors cursor-pointer group"
+              className={`text-center border-r border-zinc-800 last:border-r-0 py-2 transition-colors cursor-pointer group ${
+                isActive ? 'bg-orange-500/20' : 'hover:bg-zinc-800/50'
+              }`}
               style={{ width: `${width}%` }}
               onClick={() => onSegmentClick(prevKm, station.km)}
               title={`Zoom sur ${aidStations[i].name.split(' ').pop()} → ${station.name.split(' ').pop()}`}
             >
-              <div className="text-[8px] text-zinc-600 group-hover:text-orange-400 truncate px-0.5 transition-colors">
+              <div className={`text-[8px] truncate px-0.5 transition-colors ${
+                isActive ? 'text-orange-400 font-semibold' : 'text-zinc-600 group-hover:text-orange-400'
+              }`}>
                 {station.name.replace('Start - ', '').replace('Finish - ', '').split(' ')[0]}
               </div>
             </button>
@@ -283,6 +302,7 @@ function AoaMap({
   onCursorMove,
   onCursorLeave,
   zoomToSegment,
+  onMapClick,
 }: {
   gpxData: GeoJSON.FeatureCollection | null
   elevationData: ElevationPoint[]
@@ -290,6 +310,7 @@ function AoaMap({
   onCursorMove: (point: CursorPoint) => void
   onCursorLeave: () => void
   zoomToSegment: { startKm: number; endKm: number } | null
+  onMapClick: (km: number) => void
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -354,10 +375,7 @@ function AoaMap({
   useEffect(() => {
     if (!map.current || !mapLoaded || elevationData.length === 0) return
 
-    const handleMapMove = (e: mapboxgl.MapMouseEvent) => {
-      const { lng, lat } = e.lngLat
-
-      // Find closest point to cursor
+    const findClosestPoint = (lng: number, lat: number) => {
       let closest = elevationData[0]
       let minDist = Infinity
 
@@ -370,6 +388,12 @@ function AoaMap({
           closest = point
         }
       }
+      return closest
+    }
+
+    const handleMapMove = (e: mapboxgl.MapMouseEvent) => {
+      const { lng, lat } = e.lngLat
+      const closest = findClosestPoint(lng, lat)
 
       // Calculate gradient
       const idx = elevationData.indexOf(closest)
@@ -395,14 +419,22 @@ function AoaMap({
       onCursorLeave()
     }
 
+    const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+      const { lng, lat } = e.lngLat
+      const closest = findClosestPoint(lng, lat)
+      onMapClick(closest.distance)
+    }
+
     map.current.on('mousemove', handleMapMove)
     map.current.on('mouseleave', handleMapLeave)
+    map.current.on('click', handleMapClick)
 
     return () => {
       map.current?.off('mousemove', handleMapMove)
       map.current?.off('mouseleave', handleMapLeave)
+      map.current?.off('click', handleMapClick)
     }
-  }, [mapLoaded, elevationData, onCursorMove, onCursorLeave])
+  }, [mapLoaded, elevationData, onCursorMove, onCursorLeave, onMapClick])
 
   // Update cursor marker position
   useEffect(() => {
@@ -528,6 +560,19 @@ export function AoaPage() {
     setZoomToSegment({ startKm, endKm })
   }, [])
 
+  // Find which segment a km belongs to
+  const handleMapClick = useCallback((km: number) => {
+    // Find the segment that contains this km
+    for (let i = 1; i < aoaAidStations.length; i++) {
+      const prevKm = aoaAidStations[i - 1].km
+      const currKm = aoaAidStations[i].km
+      if (km >= prevKm && km <= currKm) {
+        setZoomToSegment({ startKm: prevKm, endKm: currKm })
+        return
+      }
+    }
+  }, [])
+
   // Load GPX
   useEffect(() => {
     async function loadGpx() {
@@ -622,6 +667,7 @@ export function AoaPage() {
           onCursorMove={handleCursorMove}
           onCursorLeave={handleCursorLeave}
           zoomToSegment={zoomToSegment}
+          onMapClick={handleMapClick}
         />
       </div>
 
@@ -633,6 +679,7 @@ export function AoaPage() {
         onCursorMove={handleCursorMove}
         onCursorLeave={handleCursorLeave}
         onSegmentClick={handleSegmentClick}
+        activeSegment={zoomToSegment}
       />
 
       {/* Aid Stations Table */}
