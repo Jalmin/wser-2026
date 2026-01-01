@@ -9,6 +9,8 @@ const ProfilPage = lazy(() => import('./pages/ProfilPage').then(m => ({ default:
 const PlanPage = lazy(() => import('./pages/PlanPage').then(m => ({ default: m.PlanPage })))
 const MethodesPage = lazy(() => import('./pages/MethodesPage').then(m => ({ default: m.MethodesPage })))
 const DocsPage = lazy(() => import('./pages/DocsPage').then(m => ({ default: m.DocsPage })))
+// Hidden page - not in navigation
+const AoaPage = lazy(() => import('./pages/AoaPage').then(m => ({ default: m.AoaPage })))
 
 // Skeleton loading component
 function PageLoader() {
@@ -65,6 +67,8 @@ export default function App() {
           <Route path="/plan" element={<PlanPage />} />
           <Route path="/methodes" element={<MethodesPage />} />
           <Route path="/docs" element={<DocsPage />} />
+          {/* Hidden route - not in navigation */}
+          <Route path="/aoa" element={<AoaPage />} />
         </Routes>
       </Suspense>
     </AppLayout>
